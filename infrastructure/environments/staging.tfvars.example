@@ -1,0 +1,56 @@
+# Staging Environment Configuration
+
+# Environment
+environment = "staging"
+project_name = "book-review-platform"
+
+# AWS Configuration
+aws_region = "us-east-1"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# VPC Configuration
+vpc_cidr = "10.1.0.0/16"
+public_subnet_cidrs = ["10.1.1.0/24", "10.1.2.0/24"]
+private_subnet_cidrs = ["10.1.3.0/24", "10.1.4.0/24"]
+
+# ECS Configuration
+ecs_task_cpu = 512
+ecs_task_memory = 1024
+ecs_desired_count = 2
+ecs_min_capacity = 1
+ecs_max_capacity = 5
+
+# RDS Configuration
+db_instance_class = "db.t3.small"
+db_allocated_storage = 50
+db_max_allocated_storage = 200
+db_backup_retention_period = 14
+db_backup_window = "03:00-04:00"
+db_maintenance_window = "sun:04:00-sun:05:00"
+db_deletion_protection = true
+db_skip_final_snapshot = false
+
+# Application Configuration
+app_port = 3000
+health_check_path = "/health"
+health_check_interval = 30
+health_check_timeout = 5
+health_check_healthy_threshold = 2
+health_check_unhealthy_threshold = 3
+
+# Auto Scaling Configuration
+cpu_target_value = 60.0
+memory_target_value = 70.0
+scale_up_cooldown = 300
+scale_down_cooldown = 300
+
+# CloudWatch Configuration
+log_retention_days = 30
+
+# Tags
+tags = {
+  Environment = "staging"
+  Project     = "book-review-platform"
+  ManagedBy   = "terraform"
+  Owner       = "development-team"
+}

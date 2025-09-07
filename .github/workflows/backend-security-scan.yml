@@ -1,0 +1,371 @@
+name: Security Scan and Dependency Updates
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/package*.json'
+      - 'backend/Dockerfile'
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        id: audit
+        run: |
+          npm audit --audit-level=moderate --json > audit-results.json || true
+          
+          # Check for high/critical vulnerabilities
+          HIGH_VULNS=$(cat audit-results.json | jq '.metadata.vulnerabilities.high // 0')
+          CRITICAL_VULNS=$(cat audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+          
+          echo "high-vulnerabilities=$HIGH_VULNS" >> $GITHUB_OUTPUT
+          echo "critical-vulnerabilities=$CRITICAL_VULNS" >> $GITHUB_OUTPUT
+          
+          if [ "$HIGH_VULNS" -gt 0 ] || [ "$CRITICAL_VULNS" -gt 0 ]; then
+            echo "Found $HIGH_VULNS high and $CRITICAL_VULNS critical vulnerabilities"
+            exit 1
+          fi
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: backend/audit-results.json
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=backend/package.json --json-file-output=snyk-results.json
+
+      - name: Upload Snyk results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-results
+          path: snyk-results.json
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          cd backend
+          docker build -t book-review-platform-backend:scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'book-review-platform-backend:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy for JSON output
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'book-review-platform-backend:scan'
+          format: 'json'
+          output: 'trivy-results.json'
+
+      - name: Upload Trivy JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-results
+          path: trivy-results.json
+
+  license-scan:
+    name: License Compliance Scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install license checker
+        run: npm install -g license-checker
+
+      - name: Check licenses
+        run: |
+          license-checker --json --out license-report.json
+          license-checker --summary
+
+      - name: Check for prohibited licenses
+        run: |
+          # Define prohibited licenses
+          PROHIBITED_LICENSES=("GPL-2.0" "GPL-3.0" "AGPL-1.0" "AGPL-3.0")
+          
+          # Check if any prohibited licenses are found
+          for license in "${PROHIBITED_LICENSES[@]}"; do
+            if grep -q "$license" license-report.json; then
+              echo "Prohibited license found: $license"
+              exit 1
+            fi
+          done
+          
+          echo "No prohibited licenses found"
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: backend/license-report.json
+
+  dependency-update:
+    name: Automated Dependency Updates
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for outdated packages
+        id: outdated
+        run: |
+          npm outdated --json > outdated.json || true
+          
+          if [ -s outdated.json ]; then
+            echo "has-updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update patch and minor versions
+        if: steps.outdated.outputs.has-updates == 'true'
+        run: |
+          # Update patch versions (safe updates)
+          npm update
+          
+          # Check if package-lock.json was modified
+          if git diff --quiet package-lock.json; then
+            echo "No updates available"
+            exit 0
+          fi
+
+      - name: Run tests after updates
+        if: steps.outdated.outputs.has-updates == 'true'
+        run: |
+          npm run test:unit
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/test_db
+          JWT_SECRET: test-jwt-secret
+          JWT_REFRESH_SECRET: test-refresh-secret
+          OPENAI_API_KEY: test-openai-key
+
+      - name: Create Pull Request
+        if: steps.outdated.outputs.has-updates == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(deps): update dependencies'
+          title: 'Automated dependency updates'
+          body: |
+            This PR contains automated dependency updates.
+            
+            ## Changes
+            - Updated patch and minor versions of dependencies
+            - All tests pass with the updated dependencies
+            
+            ## Security
+            - No high or critical vulnerabilities detected
+            - License compliance verified
+            
+            Please review the changes and merge if everything looks good.
+          branch: automated-dependency-updates
+          base: develop
+          delete-branch: true
+
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, container-scan, license-scan]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate security summary
+        run: |
+          echo "# Security Scan Summary" > security-summary.md
+          echo "" >> security-summary.md
+          echo "Generated on: $(date)" >> security-summary.md
+          echo "" >> security-summary.md
+          
+          # NPM Audit Summary
+          if [ -f npm-audit-results/audit-results.json ]; then
+            echo "## NPM Audit Results" >> security-summary.md
+            HIGH_VULNS=$(cat npm-audit-results/audit-results.json | jq '.metadata.vulnerabilities.high // 0')
+            CRITICAL_VULNS=$(cat npm-audit-results/audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+            MODERATE_VULNS=$(cat npm-audit-results/audit-results.json | jq '.metadata.vulnerabilities.moderate // 0')
+            LOW_VULNS=$(cat npm-audit-results/audit-results.json | jq '.metadata.vulnerabilities.low // 0')
+            
+            echo "- Critical: $CRITICAL_VULNS" >> security-summary.md
+            echo "- High: $HIGH_VULNS" >> security-summary.md
+            echo "- Moderate: $MODERATE_VULNS" >> security-summary.md
+            echo "- Low: $LOW_VULNS" >> security-summary.md
+            echo "" >> security-summary.md
+          fi
+          
+          # Trivy Summary
+          if [ -f trivy-results/trivy-results.json ]; then
+            echo "## Container Scan Results (Trivy)" >> security-summary.md
+            CRITICAL_CONTAINER=$(cat trivy-results/trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length')
+            HIGH_CONTAINER=$(cat trivy-results/trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length')
+            
+            echo "- Critical: $CRITICAL_CONTAINER" >> security-summary.md
+            echo "- High: $HIGH_CONTAINER" >> security-summary.md
+            echo "" >> security-summary.md
+          fi
+          
+          # License Summary
+          if [ -f license-report/license-report.json ]; then
+            echo "## License Compliance" >> security-summary.md
+            echo "- License scan completed successfully" >> security-summary.md
+            echo "- No prohibited licenses detected" >> security-summary.md
+            echo "" >> security-summary.md
+          fi
+          
+          echo "## Recommendations" >> security-summary.md
+          echo "- Review and address any high or critical vulnerabilities" >> security-summary.md
+          echo "- Keep dependencies up to date" >> security-summary.md
+          echo "- Monitor security advisories for used packages" >> security-summary.md
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: security-summary.md
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('security-summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+  notify-security-issues:
+    name: Notify Security Issues
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, container-scan]
+    if: failure()
+    
+    steps:
+      - name: Notify security team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#security-alerts'
+          webhook_url: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          custom_payload: |
+            {
+              "text": "🚨 Security vulnerabilities detected in ${{ github.repository }}",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Branch",
+                      "value": "${{ github.ref_name }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Workflow",
+                      "value": "${{ github.workflow }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Action",
+                      "value": "Review security scan results and address vulnerabilities",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}

@@ -1,0 +1,33 @@
+# Project Configuration
+project_name = "book-review-platform"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# VPC Configuration
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Database Configuration
+db_instance_class         = "db.t3.micro"
+db_allocated_storage      = 20
+db_max_allocated_storage  = 100
+db_name                   = "bookreview"
+db_username               = "postgres"
+
+# ECS Configuration
+ecs_task_cpu       = 256
+ecs_task_memory    = 512
+ecs_desired_count  = 2
+container_port     = 3000
+
+# SSL Certificate (optional - leave empty for default certificate)
+domain_name = ""
+
+# Application Environment Variables
+app_environment_variables = {
+  NODE_ENV = "production"
+  PORT     = "3000"
+  # Add other environment variables as needed
+  # OPENAI_API_KEY will be set via AWS Secrets Manager
+  # JWT_SECRET will be set via AWS Secrets Manager
+}

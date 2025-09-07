@@ -1,0 +1,1 @@
+export { RatingRecalculationJob } from './rating-recalculation.job';

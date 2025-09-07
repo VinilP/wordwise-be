@@ -1,0 +1,466 @@
+name: Pipeline Health Monitor
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  health-check:
+    name: Pipeline Health Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check ECS services health
+        id: ecs-health
+        run: |
+          environments=("dev" "staging" "prod")
+          unhealthy_services=""
+          
+          for env in "${environments[@]}"; do
+            cluster_name="book-review-platform-${env}-cluster"
+            service_name="book-review-platform-${env}-service"
+            
+            # Check if cluster exists
+            if aws ecs describe-clusters --clusters $cluster_name --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+              # Check service health
+              running_count=$(aws ecs describe-services \
+                --cluster $cluster_name \
+                --services $service_name \
+                --query 'services[0].runningCount' \
+                --output text 2>/dev/null || echo "0")
+              
+              desired_count=$(aws ecs describe-services \
+                --cluster $cluster_name \
+                --services $service_name \
+                --query 'services[0].desiredCount' \
+                --output text 2>/dev/null || echo "0")
+              
+              if [ "$running_count" != "$desired_count" ] || [ "$running_count" = "0" ]; then
+                unhealthy_services="$unhealthy_services $env"
+                echo "❌ $env: $running_count/$desired_count tasks running"
+              else
+                echo "✅ $env: $running_count/$desired_count tasks running"
+              fi
+            else
+              echo "⚠️  $env: Cluster not found or inactive"
+            fi
+          done
+          
+          echo "unhealthy-services=$unhealthy_services" >> $GITHUB_OUTPUT
+
+      - name: Check RDS instances health
+        id: rds-health
+        run: |
+          environments=("dev" "staging" "prod")
+          unhealthy_databases=""
+          
+          for env in "${environments[@]}"; do
+            db_identifier="book-review-platform-${env}-db"
+            
+            # Check database status
+            db_status=$(aws rds describe-db-instances \
+              --db-instance-identifier $db_identifier \
+              --query 'DBInstances[0].DBInstanceStatus' \
+              --output text 2>/dev/null || echo "not-found")
+            
+            if [ "$db_status" = "available" ]; then
+              echo "✅ $env database: $db_status"
+            else
+              unhealthy_databases="$unhealthy_databases $env"
+              echo "❌ $env database: $db_status"
+            fi
+          done
+          
+          echo "unhealthy-databases=$unhealthy_databases" >> $GITHUB_OUTPUT
+
+      - name: Check ECR repositories
+        id: ecr-health
+        run: |
+          repo_name="book-review-platform-backend"
+          
+          # Check if repository exists and get image count
+          image_count=$(aws ecr describe-images \
+            --repository-name $repo_name \
+            --query 'length(imageDetails)' \
+            --output text 2>/dev/null || echo "0")
+          
+          if [ "$image_count" -gt 0 ]; then
+            echo "✅ ECR repository: $image_count images available"
+            echo "ecr-healthy=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ ECR repository: No images found"
+            echo "ecr-healthy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check recent workflow runs
+        id: workflow-health
+        run: |
+          # Get recent workflow runs
+          failed_workflows=$(gh api repos/${{ github.repository }}/actions/runs \
+            --jq '.workflow_runs[] | select(.created_at > (now - 86400 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | select(.conclusion == "failure") | .name' \
+            | sort | uniq -c | sort -nr)
+          
+          if [ -n "$failed_workflows" ]; then
+            echo "❌ Recent workflow failures:"
+            echo "$failed_workflows"
+            echo "workflow-failures=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No recent workflow failures"
+            echo "workflow-failures=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check application endpoints
+        id: endpoint-health
+        run: |
+          environments=("dev" "staging" "prod")
+          unhealthy_endpoints=""
+          
+          for env in "${environments[@]}"; do
+            # Get ALB DNS name from Terraform state (if available)
+            alb_dns=""
+            
+            # Try to get from Terraform outputs
+            cd backend/terraform 2>/dev/null || continue
+            
+            if terraform output alb_dns_name 2>/dev/null; then
+              alb_dns=$(terraform output -raw alb_dns_name 2>/dev/null || echo "")
+            fi
+            
+            cd - > /dev/null
+            
+            if [ -n "$alb_dns" ]; then
+              health_url="https://$alb_dns/health"
+              
+              if curl -f -s --max-time 10 "$health_url" > /dev/null; then
+                echo "✅ $env endpoint: $health_url"
+              else
+                unhealthy_endpoints="$unhealthy_endpoints $env"
+                echo "❌ $env endpoint: $health_url"
+              fi
+            else
+              echo "⚠️  $env endpoint: ALB DNS not found"
+            fi
+          done
+          
+          echo "unhealthy-endpoints=$unhealthy_endpoints" >> $GITHUB_OUTPUT
+
+      - name: Generate health report
+        run: |
+          echo "# Pipeline Health Report" > health-report.md
+          echo "Generated: $(date)" >> health-report.md
+          echo "" >> health-report.md
+          
+          # ECS Services
+          echo "## ECS Services" >> health-report.md
+          if [ -n "${{ steps.ecs-health.outputs.unhealthy-services }}" ]; then
+            echo "❌ Unhealthy services:${{ steps.ecs-health.outputs.unhealthy-services }}" >> health-report.md
+          else
+            echo "✅ All ECS services healthy" >> health-report.md
+          fi
+          echo "" >> health-report.md
+          
+          # RDS Databases
+          echo "## RDS Databases" >> health-report.md
+          if [ -n "${{ steps.rds-health.outputs.unhealthy-databases }}" ]; then
+            echo "❌ Unhealthy databases:${{ steps.rds-health.outputs.unhealthy-databases }}" >> health-report.md
+          else
+            echo "✅ All RDS instances healthy" >> health-report.md
+          fi
+          echo "" >> health-report.md
+          
+          # ECR Repository
+          echo "## ECR Repository" >> health-report.md
+          if [ "${{ steps.ecr-health.outputs.ecr-healthy }}" = "true" ]; then
+            echo "✅ ECR repository healthy" >> health-report.md
+          else
+            echo "❌ ECR repository issues detected" >> health-report.md
+          fi
+          echo "" >> health-report.md
+          
+          # Workflow Health
+          echo "## Recent Workflows" >> health-report.md
+          if [ "${{ steps.workflow-health.outputs.workflow-failures }}" = "true" ]; then
+            echo "❌ Recent workflow failures detected" >> health-report.md
+          else
+            echo "✅ No recent workflow failures" >> health-report.md
+          fi
+          echo "" >> health-report.md
+          
+          # Application Endpoints
+          echo "## Application Endpoints" >> health-report.md
+          if [ -n "${{ steps.endpoint-health.outputs.unhealthy-endpoints }}" ]; then
+            echo "❌ Unhealthy endpoints:${{ steps.endpoint-health.outputs.unhealthy-endpoints }}" >> health-report.md
+          else
+            echo "✅ All application endpoints healthy" >> health-report.md
+          fi
+
+      - name: Upload health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-health-report
+          path: health-report.md
+
+      - name: Determine overall health
+        id: overall-health
+        run: |
+          issues=0
+          
+          if [ -n "${{ steps.ecs-health.outputs.unhealthy-services }}" ]; then
+            issues=$((issues + 1))
+          fi
+          
+          if [ -n "${{ steps.rds-health.outputs.unhealthy-databases }}" ]; then
+            issues=$((issues + 1))
+          fi
+          
+          if [ "${{ steps.ecr-health.outputs.ecr-healthy }}" = "false" ]; then
+            issues=$((issues + 1))
+          fi
+          
+          if [ "${{ steps.workflow-health.outputs.workflow-failures }}" = "true" ]; then
+            issues=$((issues + 1))
+          fi
+          
+          if [ -n "${{ steps.endpoint-health.outputs.unhealthy-endpoints }}" ]; then
+            issues=$((issues + 1))
+          fi
+          
+          if [ $issues -eq 0 ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+            echo "✅ Overall pipeline health: HEALTHY"
+          else
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            echo "❌ Overall pipeline health: UNHEALTHY ($issues issues)"
+          fi
+
+      - name: Notify on health issues
+        if: steps.overall-health.outputs.status == 'unhealthy'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#alerts'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          custom_payload: |
+            {
+              "text": "🚨 Pipeline Health Issues Detected",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Issues Found",
+                      "value": "ECS: ${{ steps.ecs-health.outputs.unhealthy-services || 'OK' }}\nRDS: ${{ steps.rds-health.outputs.unhealthy-databases || 'OK' }}\nECR: ${{ steps.ecr-health.outputs.ecr-healthy == 'true' && 'OK' || 'Issues' }}\nWorkflows: ${{ steps.workflow-health.outputs.workflow-failures == 'false' && 'OK' || 'Failures' }}\nEndpoints: ${{ steps.endpoint-health.outputs.unhealthy-endpoints || 'OK' }}",
+                      "short": false
+                    },
+                    {
+                      "title": "Action Required",
+                      "value": "Check AWS console and GitHub Actions for details",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  cost-monitoring:
+    name: Cost Monitoring
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get current month costs
+        id: costs
+        run: |
+          # Get current month costs
+          start_date=$(date -d "$(date +%Y-%m-01)" +%Y-%m-%d)
+          end_date=$(date +%Y-%m-%d)
+          
+          total_cost=$(aws ce get-cost-and-usage \
+            --time-period Start=$start_date,End=$end_date \
+            --granularity MONTHLY \
+            --metrics BlendedCost \
+            --query 'ResultsByTime[0].Total.BlendedCost.Amount' \
+            --output text)
+          
+          echo "Current month cost: \$${total_cost}"
+          echo "total-cost=$total_cost" >> $GITHUB_OUTPUT
+          
+          # Get costs by service
+          aws ce get-cost-and-usage \
+            --time-period Start=$start_date,End=$end_date \
+            --granularity MONTHLY \
+            --metrics BlendedCost \
+            --group-by Type=DIMENSION,Key=SERVICE \
+            --query 'ResultsByTime[0].Groups[?Total.BlendedCost.Amount>`5`].[Keys[0],Total.BlendedCost.Amount]' \
+            --output table > cost-breakdown.txt
+          
+          echo "Cost breakdown:"
+          cat cost-breakdown.txt
+
+      - name: Check cost threshold
+        run: |
+          cost=${{ steps.costs.outputs.total-cost }}
+          threshold=100.0  # $100 threshold
+          
+          if (( $(echo "$cost > $threshold" | bc -l) )); then
+            echo "⚠️  Cost threshold exceeded: \$${cost} > \$${threshold}"
+            echo "cost-alert=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Cost within threshold: \$${cost} <= \$${threshold}"
+            echo "cost-alert=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload cost report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-report
+          path: cost-breakdown.txt
+
+      - name: Notify on high costs
+        if: env.cost-alert == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          channel: '#alerts'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          custom_payload: |
+            {
+              "text": "💰 AWS Cost Alert",
+              "attachments": [
+                {
+                  "color": "warning",
+                  "fields": [
+                    {
+                      "title": "Current Month Cost",
+                      "value": "${{ steps.costs.outputs.total-cost }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Threshold",
+                      "value": "$100.00",
+                      "short": true
+                    },
+                    {
+                      "title": "Action Required",
+                      "value": "Review AWS Cost Explorer for detailed breakdown",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  security-monitoring:
+    name: Security Monitoring
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for security advisories
+        id: advisories
+        run: |
+          # Check for GitHub security advisories
+          advisories=$(gh api graphql -f query='
+            query {
+              repository(owner: "${{ github.repository_owner }}", name: "${{ github.event.repository.name }}") {
+                vulnerabilityAlerts(first: 10, states: OPEN) {
+                  nodes {
+                    securityVulnerability {
+                      advisory {
+                        summary
+                        severity
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ' --jq '.data.repository.vulnerabilityAlerts.nodes | length')
+          
+          echo "Open security advisories: $advisories"
+          echo "advisory-count=$advisories" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check secret scanning alerts
+        id: secrets
+        run: |
+          # Check for secret scanning alerts (requires admin access)
+          secret_alerts=$(gh api repos/${{ github.repository }}/secret-scanning/alerts \
+            --jq 'map(select(.state == "open")) | length' 2>/dev/null || echo "0")
+          
+          echo "Open secret scanning alerts: $secret_alerts"
+          echo "secret-count=$secret_alerts" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on security issues
+        if: steps.advisories.outputs.advisory-count > 0 || steps.secrets.outputs.secret-count > 0
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          channel: '#security-alerts'
+          webhook_url: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+          custom_payload: |
+            {
+              "text": "🔒 Security Monitoring Alert",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {
+                      "title": "Security Advisories",
+                      "value": "${{ steps.advisories.outputs.advisory-count }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Secret Scanning Alerts",
+                      "value": "${{ steps.secrets.outputs.secret-count }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Action Required",
+                      "value": "Review and address security issues in GitHub Security tab",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
