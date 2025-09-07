@@ -22,168 +22,43 @@ A comprehensive REST API for the WordWise book review platform built with Node.j
 - npm or yarn
 - OpenAI API key (for recommendations)
 
-## 🛠️ Quick Start - Development Environment
+## 📚 Documentation Structure
 
-### Prerequisites
-- **Node.js** (v18 or higher) - [Download here](https://nodejs.org/)
-- **PostgreSQL** (v13 or higher) - [Download here](https://www.postgresql.org/download/)
-- **npm** or **yarn** package manager
-- **OpenAI API Key** (optional, for AI recommendations) - [Get here](https://platform.openai.com/)
+This project uses a clear documentation structure:
 
-### Step-by-Step Setup
+- **[README.md](./README.md)** - Main documentation (this file)
+- **[QUICKSTART.md](./QUICKSTART.md)** - Quick start guide for immediate setup
+- **[SETUP.md](./SETUP.md)** - Detailed setup instructions and troubleshooting
 
-1. **Clone and Navigate**
-   ```bash
-   git clone <repository-url>
-   cd wordwise-be
-   ```
+## 🚀 Quick Start
 
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
+For immediate setup, see the **[QUICKSTART.md](./QUICKSTART.md)** guide.
 
-3. **Environment Configuration**
-   ```bash
-   # Copy the example environment file
-   cp .env.example .env
-   ```
-   
-   Edit the `.env` file with your configuration:
-   ```env
-   # Server Configuration
-   NODE_ENV=development
-   PORT=3001
-   API_PREFIX=/api
-   
-   # Database Configuration
-   DATABASE_URL=postgresql://username:password@localhost:5432/bookreview_dev
-   
-   # JWT Configuration
-   JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-   JWT_EXPIRES_IN=15m
-   JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this-in-production
-   JWT_REFRESH_EXPIRES_IN=7d
-   
-   # OpenAI Configuration (optional)
-   OPENAI_API_KEY=your-openai-api-key
-   
-   # CORS Configuration
-   CORS_ORIGIN=http://localhost:3000
-   
-   # Rate Limiting
-   RATE_LIMIT_WINDOW_MS=900000
-   RATE_LIMIT_MAX_REQUESTS=100
-   ```
+For comprehensive setup instructions, see the **[SETUP.md](./SETUP.md)** guide.
 
-4. **Database Setup**
-   
-   **Option A: Local PostgreSQL**
-   ```bash
-   # Install PostgreSQL (macOS with Homebrew)
-   brew install postgresql
-   brew services start postgresql
-   
-   # Create database
-   createdb bookreview_dev
-   ```
-   
-   **Option B: Docker PostgreSQL**
-   ```bash
-   # Start PostgreSQL with Docker
-   docker-compose up -d postgres
-   ```
-
-5. **Initialize Database**
-   ```bash
-   # Generate Prisma client
-   npm run db:generate
-   
-   # Run database migrations
-   npm run db:migrate
-   
-   # Seed the database with sample data (optional)
-   npm run db:seed
-   ```
-
-6. **Start Development Server**
-   ```bash
-   npm run dev
-   ```
-
-7. **Verify Setup**
-   ```bash
-   # Test the API
-   curl http://localhost:3001/health
-   
-   # Or run smoke tests
-   npm run test:smoke
-   ```
-
-### 🚨 Important Notes
-
-- **Database Required**: PostgreSQL must be running before starting the server
-- **Port 3001**: Backend runs on port 3001 by default
-- **Environment Variables**: Update `.env` with your actual database credentials
-- **OpenAI API**: Optional but recommended for AI recommendations feature
-
-### 🔧 Development Commands
+### Essential Commands
 
 ```bash
-# Start development server with hot reload
+# Install dependencies
+npm install
+
+# Setup environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# Setup database
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+
+# Start development server
 npm run dev
-
-# Database operations
-npm run db:generate    # Generate Prisma client
-npm run db:migrate     # Run database migrations
-npm run db:seed        # Seed database with sample data
-npm run db:studio      # Open Prisma Studio (database GUI)
-npm run db:reset       # Reset database (WARNING: deletes all data)
-
-# Testing
-npm run test           # Run all tests
-npm run test:smoke     # Run smoke tests
-npm run test:coverage  # Run tests with coverage
-
-# Code Quality
-npm run lint           # Run ESLint
-npm run lint:fix       # Fix ESLint issues
-npm run format         # Format code with Prettier
 ```
 
-### 🌐 Access Points
-
-- **API Base URL**: `http://localhost:3001/api`
+**Access Points:**
+- **API**: `http://localhost:3001/api`
 - **Health Check**: `http://localhost:3001/health`
-- **Prisma Studio**: `http://localhost:5555` (when running `npm run db:studio`)
-
-## 🚀 Running Full Development Environment
-
-To run both frontend and backend together:
-
-### Terminal 1 - Backend
-```bash
-cd wordwise-be
-npm run dev
-# Backend will run on http://localhost:3001
-```
-
-### Terminal 2 - Frontend
-```bash
-cd wordwise-fe
-npm run dev
-# Frontend will run on http://localhost:5173
-```
-
-### Quick Verification
-1. **Backend Health Check**: Visit `http://localhost:3001/health`
-2. **Frontend Application**: Visit `http://localhost:5173`
-3. **API Integration**: The frontend should connect to the backend automatically
-
-### Troubleshooting
-- **CORS Issues**: Ensure `CORS_ORIGIN=http://localhost:5173` in backend `.env`
-- **Database Issues**: Ensure PostgreSQL is running and migrations are applied
-- **Port Conflicts**: Backend uses port 3001, frontend uses port 5173
+- **Prisma Studio**: `http://localhost:5555` (run `npm run db:studio`)
 
 ## 📚 API Documentation
 

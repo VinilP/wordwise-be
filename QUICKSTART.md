@@ -4,24 +4,59 @@ A comprehensive REST API for the WordWise book review platform built with Node.j
 
 ## 🚀 Quick Start
 
+### Prerequisites
+- **Node.js** (v18 or higher)
+- **PostgreSQL** (v13 or higher)
+- **OpenAI API Key** (optional, for AI recommendations)
+
+### Setup Steps
+
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Setup environment
+# 2. Setup environment
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your database credentials and API keys
 
-# Setup database
-npm run db:generate
-npm run db:migrate
-npm run db:seed
+# 3. Setup database
+npm run db:generate    # Generate Prisma client
+npm run db:migrate     # Run database migrations
+npm run db:seed        # Seed database with sample data (optional)
 
-# Start development server
+# 4. Start development server
 npm run dev
 ```
 
-The API will be available at `http://localhost:3001`
+**Access Points:**
+- **API**: `http://localhost:3001/api`
+- **Health Check**: `http://localhost:3001/health`
+- **Prisma Studio**: `http://localhost:5555` (run `npm run db:studio`)
+
+> 📖 **For detailed setup instructions, see [SETUP.md](./SETUP.md)**
+
+## 🚀 Running Full Development Environment
+
+To run both frontend and backend together:
+
+### Terminal 1 - Backend
+```bash
+cd wordwise-be
+npm run dev
+# Backend will run on http://localhost:3001
+```
+
+### Terminal 2 - Frontend
+```bash
+cd wordwise-fe
+npm run dev
+# Frontend will run on http://localhost:5173
+```
+
+### Quick Verification
+1. **Backend Health Check**: Visit `http://localhost:3001/health`
+2. **Frontend Application**: Visit `http://localhost:5173`
+3. **API Integration**: The frontend should connect to the backend automatically
 
 ## 📁 Project Structure
 
