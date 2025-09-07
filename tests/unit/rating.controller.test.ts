@@ -42,8 +42,10 @@ describe('RatingController', () => {
     it('should return rating statistics for a book', async () => {
       const bookId = 'book-123';
       const mockStats = {
+        bookId: bookId,
         averageRating: 4.5,
         reviewCount: 10,
+        totalReviews: 10,
         ratingDistribution: {
           '1': 0,
           '2': 1,

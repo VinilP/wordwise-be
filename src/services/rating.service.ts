@@ -113,20 +113,30 @@ export class RatingService {
    * Get rating statistics for a book
    */
   async getBookRatingStats(bookId: string): Promise<{
+    bookId: string;
     averageRating: number;
     reviewCount: number;
+    totalReviews: number;
     ratingDistribution: { [key: number]: number };
   }> {
     if (!bookId || typeof bookId !== 'string') {
       throw new Error('Invalid book ID provided');
     }
 
+    // Verify book exists
+    const book = await this.bookRepository.findById(bookId);
+    if (!book) {
+      throw new Error('Book not found');
+    }
+
     const reviews = await this.reviewRepository.findByBookId(bookId);
     
     if (reviews.length === 0) {
       return {
+        bookId,
         averageRating: 0,
         reviewCount: 0,
+        totalReviews: 0,
         ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
       };
     }
@@ -144,8 +154,10 @@ export class RatingService {
     });
 
     return {
+      bookId,
       averageRating,
       reviewCount: reviews.length,
+      totalReviews: reviews.length,
       ratingDistribution
     };
   }
@@ -159,7 +171,7 @@ export class RatingService {
     } catch (error) {
       // Log error but don't throw to avoid breaking the main operation
       console.error(`Failed to update rating for book ${bookId} after ${operation} operation:`, error);
-      throw error; // Re-throw to maintain transaction integrity
+      // Don't re-throw to avoid breaking the main review operation
     }
   }
 }

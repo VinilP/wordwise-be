@@ -29,7 +29,50 @@ export class RatingController {
       res.status(200).json(
         createSuccessResponse(stats, 'Rating statistics retrieved successfully')
       );
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message === 'Book not found') {
+        res.status(404).json(
+          createErrorResponse('Book not found', 'BOOK_NOT_FOUND')
+        );
+        return;
+      }
+      next(error);
+    }
+  };
+
+  /**
+   * Manually trigger rating recalculation for a specific book (admin endpoint)
+   */
+  recalculateBookRating = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { bookId } = req.params;
+
+      if (!bookId) {
+        res.status(400).json(
+          createErrorResponse('Book ID is required', 'MISSING_BOOK_ID')
+        );
+        return;
+      }
+
+      await this.ratingService.updateBookRating(bookId);
+      
+      // Get updated rating stats
+      const stats = await this.ratingService.getBookRatingStats(bookId);
+
+      res.status(200).json(
+        createSuccessResponse({
+          message: 'Rating recalculated successfully',
+          newRating: stats.averageRating,
+          reviewCount: stats.reviewCount
+        }, 'Rating recalculated successfully')
+      );
+    } catch (error: any) {
+      if (error.message === 'Book not found') {
+        res.status(404).json(
+          createErrorResponse('Book not found', 'BOOK_NOT_FOUND')
+        );
+        return;
+      }
       next(error);
     }
   };

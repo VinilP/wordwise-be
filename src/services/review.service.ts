@@ -45,7 +45,7 @@ export class ReviewService {
     // Check if book exists
     const book = await this.bookRepository.findById(bookId);
     if (!book) {
-      throw new Error('Book not found');
+      throw new AppError('Book not found', HTTP_STATUS.NOT_FOUND);
     }
 
     return this.reviewRepository.findByBookId(bookId);

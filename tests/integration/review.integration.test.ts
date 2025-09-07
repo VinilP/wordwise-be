@@ -57,7 +57,7 @@ describe('Review Integration Tests', () => {
 
       // Verify book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toEqual(5);
+      expect(Number(updatedBook?.averageRating)).toEqual(5);
       expect(updatedBook?.reviewCount).toBe(1);
     });
 
@@ -112,16 +112,24 @@ describe('Review Integration Tests', () => {
         rating: 4,
       };
 
+      // Create first review
+      await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      // Try to create duplicate review
       const response = await request(app)
         .post('/api/reviews')
         .set('Authorization', `Bearer ${authToken}`)
         .send(reviewData)
-        .expect(500);
+        .expect(409);
 
       expect(response.body.success).toBe(false);
     });
 
-    it('should return 500 for non-existent book', async () => {
+    it('should return 404 for non-existent book', async () => {
       const reviewData = {
         bookId: '00000000-0000-0000-0000-000000000000',
         content: 'Great book!',
@@ -132,7 +140,7 @@ describe('Review Integration Tests', () => {
         .post('/api/reviews')
         .set('Authorization', `Bearer ${authToken}`)
         .send(reviewData)
-        .expect(500);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
     });
@@ -140,6 +148,20 @@ describe('Review Integration Tests', () => {
 
   describe('GET /api/reviews/book/:bookId', () => {
     it('should get reviews for a book', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      // Then get reviews for the book
       const response = await request(app)
         .get(`/api/reviews/book/${bookId}`)
         .expect(200);
@@ -157,10 +179,10 @@ describe('Review Integration Tests', () => {
       expect(response.body.data[0].book).toBeDefined();
     });
 
-    it('should return 500 for non-existent book', async () => {
+    it('should return 404 for non-existent book', async () => {
       const response = await request(app)
         .get('/api/reviews/book/00000000-0000-0000-0000-000000000000')
-        .expect(500);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
     });
@@ -174,6 +196,20 @@ describe('Review Integration Tests', () => {
 
   describe('GET /api/reviews/user/:userId', () => {
     it('should get reviews by a user', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      // Then get reviews by user
       const response = await request(app)
         .get(`/api/reviews/user/${userId}`)
         .expect(200);
@@ -214,6 +250,22 @@ describe('Review Integration Tests', () => {
 
   describe('GET /api/reviews/:id', () => {
     it('should get a specific review', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      const createResponse = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      const reviewId = createResponse.body.data.id;
+
+      // Then get the specific review
       const response = await request(app)
         .get(`/api/reviews/${reviewId}`)
         .expect(200);
@@ -228,10 +280,10 @@ describe('Review Integration Tests', () => {
       });
     });
 
-    it('should return 500 for non-existent review', async () => {
+    it('should return 404 for non-existent review', async () => {
       const response = await request(app)
         .get('/api/reviews/00000000-0000-0000-0000-000000000000')
-        .expect(500);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
     });
@@ -239,6 +291,22 @@ describe('Review Integration Tests', () => {
 
   describe('PUT /api/reviews/:id', () => {
     it('should update a review successfully', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      const createResponse = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      const reviewId = createResponse.body.data.id;
+
+      // Then update the review
       const updateData = {
         content: 'Updated content',
         rating: 4,
@@ -259,7 +327,7 @@ describe('Review Integration Tests', () => {
 
       // Verify book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toEqual(4);
+      expect(Number(updatedBook?.averageRating)).toEqual(4);
       expect(updatedBook?.reviewCount).toBe(1);
     });
 
@@ -294,7 +362,22 @@ describe('Review Integration Tests', () => {
       expect(response.body.error.message).toBe('Rating must be between 1 and 5');
     });
 
-    it('should return 500 for unauthorized update attempt', async () => {
+    it('should return 403 for unauthorized update attempt', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      const createResponse = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      const reviewId = createResponse.body.data.id;
+
       // Create another user
       const anotherUser = await prisma.user.create({
         data: {
@@ -314,7 +397,7 @@ describe('Review Integration Tests', () => {
         .put(`/api/reviews/${reviewId}`)
         .set('Authorization', `Bearer ${unauthorizedToken}`)
         .send(updateData)
-        .expect(500);
+        .expect(403);
 
       expect(response.body.success).toBe(false);
 
@@ -324,7 +407,22 @@ describe('Review Integration Tests', () => {
   });
 
   describe('DELETE /api/reviews/:id', () => {
-    it('should return 500 for unauthorized delete attempt', async () => {
+    it('should return 403 for unauthorized delete attempt', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      const createResponse = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      const reviewId = createResponse.body.data.id;
+
       // Create another user
       const anotherUser = await prisma.user.create({
         data: {
@@ -338,7 +436,7 @@ describe('Review Integration Tests', () => {
       const response = await request(app)
         .delete(`/api/reviews/${reviewId}`)
         .set('Authorization', `Bearer ${unauthorizedToken}`)
-        .expect(500);
+        .expect(403);
 
       expect(response.body.success).toBe(false);
 
@@ -347,6 +445,22 @@ describe('Review Integration Tests', () => {
     });
 
     it('should delete a review successfully', async () => {
+      // First create a review
+      const reviewData = {
+        bookId,
+        content: 'Great book!',
+        rating: 5,
+      };
+
+      const createResponse = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(reviewData)
+        .expect(201);
+
+      const reviewId = createResponse.body.data.id;
+
+      // Then delete the review
       const response = await request(app)
         .delete(`/api/reviews/${reviewId}`)
         .set('Authorization', `Bearer ${authToken}`)
@@ -361,7 +475,7 @@ describe('Review Integration Tests', () => {
 
       // Verify book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toEqual(0);
+      expect(Number(updatedBook?.averageRating)).toEqual(0);
       expect(updatedBook?.reviewCount).toBe(0);
     });
 
@@ -374,11 +488,11 @@ describe('Review Integration Tests', () => {
       expect(response.body.error.message).toBe('Authentication required');
     });
 
-    it('should return 500 for non-existent review', async () => {
+    it('should return 404 for non-existent review', async () => {
       const response = await request(app)
         .delete('/api/reviews/00000000-0000-0000-0000-000000000000')
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(500);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
     });

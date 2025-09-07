@@ -201,7 +201,7 @@ class E2ETestRunner {
           });
           
           expect(response.status).toBe(201);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.user).toBeDefined();
           expect(data.data.accessToken).toBeDefined();
@@ -220,7 +220,7 @@ class E2ETestRunner {
           });
           
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.accessToken).toBeDefined();
         }
@@ -254,7 +254,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/books`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.books).toBeDefined();
           expect(Array.isArray(data.data.books)).toBe(true);
@@ -265,7 +265,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/books/search?q=Gatsby`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.books).toBeDefined();
         }
@@ -278,7 +278,7 @@ class E2ETestRunner {
           
           const response = await fetch(`${this.config.apiURL}/api/v1/books/${bookId}`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.book).toBeDefined();
         }
@@ -310,7 +310,7 @@ class E2ETestRunner {
           });
           
           expect(response.status).toBe(201);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.review).toBeDefined();
         }
@@ -323,7 +323,7 @@ class E2ETestRunner {
           
           const response = await fetch(`${this.config.apiURL}/api/v1/reviews/book/${bookId}`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.reviews).toBeDefined();
         }
@@ -342,7 +342,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/popular-books`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.books).toBeDefined();
         }
@@ -355,7 +355,7 @@ class E2ETestRunner {
           
           const response = await fetch(`${this.config.apiURL}/api/v1/recommendations/${userId}`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
         }
       }
@@ -376,7 +376,7 @@ class E2ETestRunner {
           
           const response = await fetch(`${this.config.apiURL}/api/v1/users/${userId}`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.user).toBeDefined();
         }
@@ -389,7 +389,7 @@ class E2ETestRunner {
           
           const response = await fetch(`${this.config.apiURL}/api/v1/reviews/user/${userId}`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
           expect(data.data.reviews).toBeDefined();
         }
@@ -408,7 +408,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/books/search?q=Gatsby`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
         }
       },
@@ -417,7 +417,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/books/search?q=Fitzgerald`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
         }
       },
@@ -426,7 +426,7 @@ class E2ETestRunner {
         test: async () => {
           const response = await fetch(`${this.config.apiURL}/api/v1/books?genre=Fiction`);
           expect(response.status).toBe(200);
-          const data = await response.json();
+          const data = await response.json() as any;
           expect(data.success).toBe(true);
         }
       }

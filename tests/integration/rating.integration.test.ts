@@ -114,7 +114,7 @@ describe('Rating Integration Tests', () => {
 
       // Verify the book was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toBe("4");
+      expect(Number(updatedBook?.averageRating)).toBe(4);
       expect(updatedBook?.reviewCount).toBe(2);
     });
 
@@ -202,7 +202,7 @@ describe('Rating Integration Tests', () => {
 
       // Check that book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toBe("5");
+      expect(Number(updatedBook?.averageRating)).toBe(5);
       expect(updatedBook?.reviewCount).toBe(1);
     });
 
@@ -232,7 +232,7 @@ describe('Rating Integration Tests', () => {
 
       // Check that book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toBe("3");
+      expect(Number(updatedBook?.averageRating)).toBe(3);
       expect(updatedBook?.reviewCount).toBe(1);
     });
 
@@ -258,7 +258,7 @@ describe('Rating Integration Tests', () => {
 
       // Check that book rating was updated
       const updatedBook = await prisma.book.findUnique({ where: { id: bookId } });
-      expect(updatedBook?.averageRating).toBe("0");
+      expect(Number(updatedBook?.averageRating)).toBe(0);
       expect(updatedBook?.reviewCount).toBe(0);
     });
   });

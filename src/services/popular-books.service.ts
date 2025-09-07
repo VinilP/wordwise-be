@@ -137,9 +137,9 @@ class PopularBooksService {
         };
       });
 
-      // Filter books with at least 3 reviews and sort by rating
+      // Filter books with at least 1 review and sort by rating
       const topRatedBooks = booksWithMetrics
-        .filter((book: any) => book.reviewCount >= 3)
+        .filter((book: any) => book.reviewCount >= 1)
         .sort((a: any, b: any) => b.averageRating - a.averageRating)
         .slice(0, 10);
 

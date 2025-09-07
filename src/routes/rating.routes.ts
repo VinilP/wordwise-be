@@ -19,11 +19,13 @@ export const createRatingRoutes = (prisma: PrismaClient): Router => {
   const authMiddleware = createAuthMiddleware(prisma);
 
   // Public routes
+  router.get('/book/:bookId', ratingController.getBookRatingStats);
   router.get('/book/:bookId/stats', ratingController.getBookRatingStats);
   router.get('/top-rated', ratingController.getTopRatedBooks);
 
   // Admin routes (require authentication)
   router.post('/recalculate', authMiddleware.authenticate, ratingController.recalculateAllRatings);
+  router.post('/recalculate/:bookId', authMiddleware.authenticate, ratingController.recalculateBookRating);
   router.get('/books-without-reviews', authMiddleware.authenticate, ratingController.getBooksWithoutReviews);
   router.put('/book/:bookId/update', authMiddleware.authenticate, ratingController.updateBookRating);
 
